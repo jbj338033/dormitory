@@ -39,26 +39,27 @@ fn get_data_directory() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(appdata).join("DormitoryManager")
+        PathBuf::from(appdata).join("Dormitory")
     }
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join("Library").join("Application Support").join("DormitoryManager")
+        PathBuf::from(home).join("Library").join("Application Support").join("Dormitory")
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".dormitory-manager")
+        PathBuf::from(home).join(".dormitory")
     }
 }
 
 async fn init_database() -> Result<SqlitePool, sqlx::Error> {
     let data_dir = get_data_directory();
-    std::fs::create_dir_all(&data_dir).ok();
+    std::fs::create_dir_all(&data_dir).map_err(|e| sqlx::Error::Io(e))?;
     
     let db_path = data_dir.join("data.db");
-    let pool = SqlitePool::connect(&format!("sqlite:{}", db_path.display())).await?;
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let pool = SqlitePool::connect(&db_url).await?;
     
     sqlx::query(
         r#"
