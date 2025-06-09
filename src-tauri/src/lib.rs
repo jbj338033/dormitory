@@ -389,6 +389,53 @@ async fn reset_data(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn update_record(
+    id: i32,
+    student_id: String,
+    name: String,
+    reason: String,
+    points: i32,
+    point_type: String,
+    date: String,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let state = app_handle.state::<AppState>();
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M").to_string();
+    
+    let actual_points = if point_type == "벌점" { -points.abs() } else { points };
+    
+    sqlx::query(
+        "UPDATE records SET student_id = ?, name = ?, reason = ?, points = ?, point_type = ?, date = ?, timestamp = ? WHERE id = ?"
+    )
+    .bind(&student_id)
+    .bind(&name)
+    .bind(&reason)
+    .bind(actual_points)
+    .bind(&point_type)
+    .bind(&date)
+    .bind(&timestamp)
+    .bind(id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| format!("데이터베이스 오류: {}", e))?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_record(id: i32, app_handle: AppHandle) -> Result<(), String> {
+    let state = app_handle.state::<AppState>();
+    
+    sqlx::query("DELETE FROM records WHERE id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| format!("데이터베이스 오류: {}", e))?;
+    
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -406,7 +453,9 @@ pub fn run() {
             search_records,
             search_summary,
             get_student_details,
-            reset_data
+            reset_data,
+            update_record,
+            delete_record
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

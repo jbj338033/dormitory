@@ -570,3 +570,31 @@ tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.btn-small {
+  font-size: 10px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 4px;
+  font-weight: 500;
+}
+
+.btn-edit {
+  background: #0969da;
+  color: white;
+}
+
+.btn-edit:hover {
+  background: #0860ca;
+}
+
+.btn-delete {
+  background: #d1242f;
+  color: white;
+}
+
+.btn-delete:hover {
+  background: #b91c1c;
+}

@@ -64,6 +64,7 @@ class App {
   private viewMode: 'summary' | 'detail' = 'summary';
   private searchTerm: string = '';
   private toast: ToastManager;
+  private currentRecords: Record[] = [];
 
   constructor() {
     this.toast = new ToastManager();
@@ -336,6 +337,7 @@ class App {
         const data = this.searchTerm ?
           await invoke<Record[]>('search_records', { term: this.searchTerm }) :
           await invoke<Record[]>('get_records');
+        this.currentRecords = data;
         this.renderDetailTable(data);
       }
     } catch (error) {
@@ -402,6 +404,7 @@ class App {
         <th>사유</th>
         <th>점수</th>
         <th>날짜</th>
+        <th>작업</th>
       </tr>
     `;
 
@@ -413,6 +416,10 @@ class App {
         <td style="text-align: left;">${row.reason}</td>
         <td class="${row.points >= 0 ? 'positive' : 'negative'}">${row.points >= 0 ? '+' : ''}${row.points}</td>
         <td>${row.date}</td>
+        <td>
+          <button class="btn-small btn-edit" onclick="window.app.editRecord(${row.id})">수정</button>
+          <button class="btn-small btn-delete" onclick="window.app.deleteRecord(${row.id})">삭제</button>
+        </td>
       </tr>
     `).join('');
   }
@@ -618,8 +625,177 @@ class App {
       if (e.target === modal) closeModal();
     });
   }
+
+  async editRecord(recordId: number) {
+    const record = this.currentRecords.find(r => r.id === recordId);
+    if (!record) {
+      this.toast.show('기록을 찾을 수 없습니다', 'error');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">기록 수정</h2>
+          <button class="close-btn">&times;</button>
+        </div>
+        <form id="edit-record-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-student-id">학번</label>
+              <input type="text" id="edit-student-id" value="${record.student_id}" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-name">이름</label>
+              <input type="text" id="edit-name" value="${record.name}" required>
+            </div>
+            <div class="form-group">
+              <label for="edit-points">점수</label>
+              <input type="number" id="edit-points" value="${Math.abs(record.points)}" min="1" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="edit-reason">사유</label>
+            <input type="text" id="edit-reason" value="${record.reason}" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-point-type">유형</label>
+            <select id="edit-point-type" required>
+              <option value="상점" ${record.point_type === '상점' ? 'selected' : ''}>상점</option>
+              <option value="벌점" ${record.point_type === '벌점' ? 'selected' : ''}>벌점</option>
+              <option value="상쇄점" ${record.point_type === '상쇄점' ? 'selected' : ''}>상쇄점</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit-date">날짜</label>
+            <input type="date" id="edit-date" value="${record.date}" required>
+          </div>
+          <div class="form-buttons">
+            <button type="submit" class="btn btn-primary">수정</button>
+            <button type="button" class="btn btn-secondary" id="cancel-edit">취소</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const form = modal.querySelector('#edit-record-form') as HTMLFormElement;
+    const closeBtn = modal.querySelector('.close-btn') as HTMLButtonElement;
+    const cancelBtn = modal.querySelector('#cancel-edit') as HTMLButtonElement;
+
+    const closeModal = () => {
+      document.body.removeChild(modal);
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const studentId = (modal.querySelector('#edit-student-id') as HTMLInputElement).value.trim();
+      const name = (modal.querySelector('#edit-name') as HTMLInputElement).value.trim();
+      const points = parseInt((modal.querySelector('#edit-points') as HTMLInputElement).value);
+      const reason = (modal.querySelector('#edit-reason') as HTMLInputElement).value.trim();
+      const pointType = (modal.querySelector('#edit-point-type') as HTMLSelectElement).value;
+      const date = (modal.querySelector('#edit-date') as HTMLInputElement).value;
+
+      if (!studentId || !name || !reason || isNaN(points) || points <= 0 || !date) {
+        this.toast.show('모든 항목을 입력하세요', 'error');
+        return;
+      }
+
+      try {
+        await invoke('update_record', {
+          id: recordId,
+          studentId,
+          name,
+          reason,
+          points,
+          pointType,
+          date
+        });
+
+        this.toast.show('기록이 수정되었습니다', 'success');
+        closeModal();
+        this.loadData();
+        this.updateStats();
+      } catch (error) {
+        this.toast.show(`수정 실패: ${error}`, 'error');
+      }
+    });
+
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  async deleteRecord(recordId: number) {
+    const record = this.currentRecords.find(r => r.id === recordId);
+    if (!record) {
+      this.toast.show('기록을 찾을 수 없습니다', 'error');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">기록 삭제</h2>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <p><strong>${record.name}(${record.student_id})</strong>의 다음 기록을 삭제하시겠습니까?</p>
+          <p style="color: #586069; font-size: 11px; margin-top: 8px;">
+            ${record.point_type} ${Math.abs(record.points)}점 - ${record.reason} (${record.date})
+          </p>
+          <p style="color: #d73a49; font-size: 11px; margin-top: 4px;">이 작업은 되돌릴 수 없습니다.</p>
+        </div>
+        <div class="form-buttons">
+          <button class="btn btn-danger" id="confirm-delete">삭제</button>
+          <button class="btn btn-secondary" id="cancel-delete">취소</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeBtn = modal.querySelector('.close-btn') as HTMLButtonElement;
+    const confirmBtn = modal.querySelector('#confirm-delete') as HTMLButtonElement;
+    const cancelBtn = modal.querySelector('#cancel-delete') as HTMLButtonElement;
+
+    const closeModal = () => {
+      document.body.removeChild(modal);
+    };
+
+    confirmBtn.addEventListener('click', async () => {
+      try {
+        await invoke('delete_record', { id: recordId });
+        this.toast.show('기록이 삭제되었습니다', 'success');
+        this.loadData();
+        this.updateStats();
+        closeModal();
+      } catch (error) {
+        this.toast.show(`삭제 실패: ${error}`, 'error');
+      }
+    });
+
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+}
+
+declare global {
+  interface Window {
+    app: App;
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  new App();
+  window.app = new App();
 });
