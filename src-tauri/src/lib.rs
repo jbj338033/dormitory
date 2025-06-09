@@ -1,6 +1,6 @@
 use sqlx::{SqlitePool, Row};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Local};
+use chrono::Local;
 use std::path::PathBuf;
 use tauri::{Manager, AppHandle};
 
@@ -101,7 +101,7 @@ async fn init_database() -> Result<SqlitePool, sqlx::Error> {
 }
 
 #[tauri::command]
-async fn login(password: String, app_handle: AppHandle) -> Result<bool, String> {
+async fn login(password: String, _app_handle: AppHandle) -> Result<bool, String> {
     let data_dir = get_data_directory();
     let config_path = data_dir.join("config.json");
     
@@ -123,7 +123,7 @@ async fn login(password: String, app_handle: AppHandle) -> Result<bool, String> 
 }
 
 #[tauri::command]
-async fn change_password(old_password: String, new_password: String, app_handle: AppHandle) -> Result<bool, String> {
+async fn change_password(old_password: String, new_password: String, _app_handle: AppHandle) -> Result<bool, String> {
     let data_dir = get_data_directory();
     let config_path = data_dir.join("config.json");
     
@@ -357,6 +357,7 @@ async fn get_student_details(student_id: String, app_handle: AppHandle) -> Resul
             points: row.get::<i32, _>("points"),
             point_type: row.get::<String, _>("point_type"),
             timestamp: row.get::<String, _>("timestamp"),
+            date: row.get::<String, _>("date"),
         })
         .collect();
     
