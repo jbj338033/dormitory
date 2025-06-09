@@ -598,3 +598,13 @@ tr:hover {
 .btn-delete:hover {
   background: #b91c1c;
 }
+
+.btn-warning {
+  background: #f59e0b;
+  color: white;
+  border: 1px solid #d97706;
+}
+
+.btn-warning:hover {
+  background: #d97706;
+}

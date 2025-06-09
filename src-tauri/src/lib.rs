@@ -436,6 +436,93 @@ async fn delete_record(id: i32, app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn list_backups(app_handle: AppHandle) -> Result<Vec<String>, String> {
+    let data_dir = get_data_directory();
+    let backup_dir = data_dir.join("backups");
+    
+    if !backup_dir.exists() {
+        return Ok(vec![]);
+    }
+    
+    let mut backups = Vec::new();
+    
+    match std::fs::read_dir(&backup_dir) {
+        Ok(entries) => {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("db")) {
+                        if let Some(filename) = path.file_name() {
+                            if let Some(name) = filename.to_str() {
+                                backups.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(_) => return Err("백업 디렉토리 읽기 실패".to_string()),
+    }
+    
+    backups.sort_by(|a, b| b.cmp(a));
+    Ok(backups)
+}
+
+#[tauri::command]
+async fn restore_backup(backup_filename: String, app_handle: AppHandle) -> Result<(), String> {
+    let state = app_handle.state::<AppState>();
+    let data_dir = get_data_directory();
+    let backup_dir = data_dir.join("backups");
+    let backup_path = backup_dir.join(&backup_filename);
+    let current_db_path = data_dir.join("data.db");
+    
+    if !backup_path.exists() {
+        return Err("백업 파일을 찾을 수 없습니다".to_string());
+    }
+    
+    let new_backup_name = format!("before_restore_{}.db", Local::now().format("%Y%m%d_%H%M%S"));
+    let safety_backup_path = backup_dir.join(&new_backup_name);
+    
+    if current_db_path.exists() {
+        std::fs::copy(&current_db_path, &safety_backup_path)
+            .map_err(|_| "현재 데이터베이스 안전 백업 생성 실패".to_string())?;
+    }
+    
+    std::fs::copy(&backup_path, &current_db_path)
+        .map_err(|_| "백업 파일 복원 실패".to_string())?;
+    
+    let new_pool = sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", current_db_path.display()))
+        .await
+        .map_err(|e| format!("복원된 데이터베이스 연결 실패: {}", e))?;
+    
+    let has_date_column = sqlx::query("PRAGMA table_info(records)")
+        .fetch_all(&new_pool)
+        .await
+        .map_err(|e| format!("테이블 정보 확인 실패: {}", e))?
+        .iter()
+        .any(|row| {
+            let name: String = row.get("name");
+            name == "date"
+        });
+    
+    if !has_date_column {
+        sqlx::query("ALTER TABLE records ADD COLUMN date TEXT")
+            .execute(&new_pool)
+            .await
+            .map_err(|e| format!("날짜 컬럼 추가 실패: {}", e))?;
+        
+        sqlx::query("UPDATE records SET date = substr(timestamp, 1, 10) WHERE date IS NULL")
+            .execute(&new_pool)
+            .await
+            .map_err(|e| format!("날짜 데이터 마이그레이션 실패: {}", e))?;
+    }
+    
+    new_pool.close().await;
+    
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -455,7 +542,9 @@ pub fn run() {
             get_student_details,
             reset_data,
             update_record,
-            delete_record
+            delete_record,
+            list_backups,
+            restore_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

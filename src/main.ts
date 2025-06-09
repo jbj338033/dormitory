@@ -131,6 +131,7 @@ class App {
           <h1>상벌점 관리</h1>
           <div class="header-buttons">
             <button class="btn btn-export" id="export-excel">Excel 내보내기</button>
+            <button class="btn btn-warning" id="restore-btn">백업 복원</button>
             <button class="btn btn-danger" id="reset-btn">데이터 초기화</button>
             <button class="btn btn-secondary" id="logout-btn">로그아웃</button>
           </div>
@@ -224,6 +225,7 @@ class App {
   bindMainEvents() {
     const logoutBtn = document.getElementById('logout-btn') as HTMLButtonElement;
     const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement;
+    const restoreBtn = document.getElementById('restore-btn') as HTMLButtonElement;
     const clearFormBtn = document.getElementById('clear-form') as HTMLButtonElement;
     const refreshBtn = document.getElementById('refresh-btn') as HTMLButtonElement;
     const exportBtn = document.getElementById('export-excel') as HTMLButtonElement;
@@ -237,6 +239,10 @@ class App {
 
     resetBtn.addEventListener('click', () => {
       this.showResetConfirm();
+    });
+
+    restoreBtn.addEventListener('click', () => {
+      this.showRestoreModal();
     });
 
     clearFormBtn.addEventListener('click', () => {
@@ -787,6 +793,87 @@ class App {
     modal.addEventListener('click', (e) => {
       if (e.target === modal) closeModal();
     });
+  }
+
+  async showRestoreModal() {
+    try {
+      const backups = await invoke<string[]>('list_backups');
+      
+      if (backups.length === 0) {
+        this.toast.show('백업 파일이 없습니다', 'error');
+        return;
+      }
+
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title">백업 복원</h2>
+            <button class="close-btn">&times;</button>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <p>복원할 백업 파일을 선택하세요:</p>
+            <p style="color: #d73a49; font-size: 11px; margin-top: 4px;">현재 데이터는 자동으로 백업됩니다.</p>
+          </div>
+          <div class="form-group">
+            <label for="backup-select">백업 파일</label>
+            <select id="backup-select" style="width: 100%; padding: 8px; border: 1px solid #e1e8ed; border-radius: 3px;">
+              ${backups.map(backup => `<option value="${backup}">${backup.replace('.db', '').replace('backup_', '')}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-buttons">
+            <button class="btn btn-warning" id="confirm-restore">복원</button>
+            <button class="btn btn-secondary" id="cancel-restore">취소</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const closeBtn = modal.querySelector('.close-btn') as HTMLButtonElement;
+      const confirmBtn = modal.querySelector('#confirm-restore') as HTMLButtonElement;
+      const cancelBtn = modal.querySelector('#cancel-restore') as HTMLButtonElement;
+      const selectEl = modal.querySelector('#backup-select') as HTMLSelectElement;
+
+      const closeModal = () => {
+        document.body.removeChild(modal);
+      };
+
+      confirmBtn.addEventListener('click', async () => {
+        const selectedBackup = selectEl.value;
+        if (!selectedBackup) {
+          this.toast.show('백업 파일을 선택하세요', 'error');
+          return;
+        }
+
+        try {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = '복원 중...';
+          
+          await invoke('restore_backup', { backupFilename: selectedBackup });
+          this.toast.show('백업 복원 완료', 'success');
+          
+          closeModal();
+          
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } catch (error) {
+          this.toast.show(`복원 실패: ${error}`, 'error');
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = '복원';
+        }
+      });
+
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+    } catch (error) {
+      this.toast.show(`백업 목록 로드 실패: ${error}`, 'error');
+    }
   }
 }
 
