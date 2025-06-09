@@ -8,6 +8,7 @@ interface Record {
   points: number;
   point_type: string;
   timestamp: string;
+  date: string;
 }
 
 interface Summary {
@@ -157,6 +158,10 @@ class App {
                   <label for="reason">사유</label>
                   <input type="text" id="reason" required>
                 </div>
+                <div class="form-group">
+                  <label for="date">날짜</label>
+                  <input type="date" id="date">
+                </div>
                 <div class="form-buttons">
                   <button type="button" class="btn btn-primary" data-type="상점">상점</button>
                   <button type="button" class="btn btn-danger" data-type="벌점">벌점</button>
@@ -286,6 +291,7 @@ class App {
     const name = (document.getElementById('name') as HTMLInputElement).value.trim();
     const points = parseInt((document.getElementById('points') as HTMLInputElement).value);
     const reason = (document.getElementById('reason') as HTMLInputElement).value.trim();
+    const dateInput = (document.getElementById('date') as HTMLInputElement).value;
 
     if (!studentId || !name || !reason || isNaN(points) || points <= 0) {
       this.toast.show('모든 항목을 입력하세요', 'error');
@@ -298,7 +304,8 @@ class App {
         name,
         reason,
         points,
-        pointType
+        pointType,
+        date: dateInput || null
       });
 
       this.toast.show(`${pointType} ${points}점 추가됨`, 'success');
@@ -315,6 +322,7 @@ class App {
     (document.getElementById('name') as HTMLInputElement).value = '';
     (document.getElementById('points') as HTMLInputElement).value = '';
     (document.getElementById('reason') as HTMLInputElement).value = '';
+    (document.getElementById('date') as HTMLInputElement).value = '';
   }
 
   async loadData() {
@@ -393,7 +401,7 @@ class App {
         <th>유형</th>
         <th>사유</th>
         <th>점수</th>
-        <th>일시</th>
+        <th>날짜</th>
       </tr>
     `;
 
@@ -404,7 +412,7 @@ class App {
         <td>${row.point_type}</td>
         <td style="text-align: left;">${row.reason}</td>
         <td class="${row.points >= 0 ? 'positive' : 'negative'}">${row.points >= 0 ? '+' : ''}${row.points}</td>
-        <td>${row.timestamp}</td>
+        <td>${row.date}</td>
       </tr>
     `).join('');
   }
@@ -423,9 +431,9 @@ class App {
           `${row.student_id},${row.name},${row.merit},${row.demerit},${row.offset},${row.total},${row.last_activity}`
         ).join('\n');
       } else {
-        csvContent = '학번,이름,유형,사유,점수,일시\n';
+        csvContent = '학번,이름,유형,사유,점수,날짜\n';
         csvContent += (data as Record[]).map(row => 
-          `${row.student_id},${row.name},${row.point_type},"${row.reason}",${row.points},${row.timestamp}`
+          `${row.student_id},${row.name},${row.point_type},"${row.reason}",${row.points},${row.date}`
         ).join('\n');
       }
 
@@ -463,7 +471,7 @@ class App {
             <table>
               <thead>
                 <tr>
-                  <th>일시</th>
+                  <th>날짜</th>
                   <th>유형</th>
                   <th>점수</th>
                   <th>사유</th>
@@ -472,7 +480,7 @@ class App {
               <tbody>
                 ${records.map(record => `
                   <tr>
-                    <td>${record.timestamp}</td>
+                    <td>${record.date}</td>
                     <td>${record.point_type}</td>
                     <td class="${record.points >= 0 ? 'positive' : 'negative'}">${record.points >= 0 ? '+' : ''}${record.points}</td>
                     <td style="text-align: left;">${record.reason}</td>

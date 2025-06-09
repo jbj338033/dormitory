@@ -13,6 +13,7 @@ pub struct Record {
     pub points: i32,
     pub point_type: String,
     pub timestamp: String,
+    pub date: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,6 +77,25 @@ async fn init_database() -> Result<SqlitePool, sqlx::Error> {
     )
     .execute(&pool)
     .await?;
+    
+    let has_date_column = sqlx::query("PRAGMA table_info(records)")
+        .fetch_all(&pool)
+        .await?
+        .iter()
+        .any(|row| {
+            let name: String = row.get("name");
+            name == "date"
+        });
+    
+    if !has_date_column {
+        sqlx::query("ALTER TABLE records ADD COLUMN date TEXT")
+            .execute(&pool)
+            .await?;
+        
+        sqlx::query("UPDATE records SET date = substr(timestamp, 1, 10) WHERE date IS NULL")
+            .execute(&pool)
+            .await?;
+    }
     
     Ok(pool)
 }
@@ -150,15 +170,17 @@ async fn add_record(
     reason: String,
     points: i32,
     point_type: String,
+    date: Option<String>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
     let state = app_handle.state::<AppState>();
     let timestamp = Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let record_date = date.unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
     
     let actual_points = if point_type == "벌점" { -points.abs() } else { points };
     
     sqlx::query(
-        "INSERT INTO records (student_id, name, reason, points, point_type, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO records (student_id, name, reason, points, point_type, timestamp, date) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&student_id)
     .bind(&name)
@@ -166,6 +188,7 @@ async fn add_record(
     .bind(actual_points)
     .bind(&point_type)
     .bind(&timestamp)
+    .bind(&record_date)
     .execute(&state.db)
     .await
     .map_err(|e| format!("데이터베이스 오류: {}", e))?;
@@ -177,7 +200,7 @@ async fn add_record(
 async fn get_records(app_handle: AppHandle) -> Result<Vec<Record>, String> {
     let state = app_handle.state::<AppState>();
     
-    let rows = sqlx::query("SELECT id, student_id, name, reason, points, point_type, timestamp FROM records ORDER BY timestamp DESC")
+    let rows = sqlx::query("SELECT id, student_id, name, reason, points, point_type, timestamp, COALESCE(date, substr(timestamp, 1, 10)) as date FROM records ORDER BY date DESC, timestamp DESC")
         .fetch_all(&state.db)
         .await
         .map_err(|e| format!("데이터베이스 오류: {}", e))?;
@@ -192,6 +215,7 @@ async fn get_records(app_handle: AppHandle) -> Result<Vec<Record>, String> {
             points: row.get::<i32, _>("points"),
             point_type: row.get::<String, _>("point_type"),
             timestamp: row.get::<String, _>("timestamp"),
+            date: row.get::<String, _>("date"),
         })
         .collect();
     
@@ -241,9 +265,9 @@ async fn search_records(term: String, app_handle: AppHandle) -> Result<Vec<Recor
     let search_term = format!("%{}%", term.to_lowercase());
     
     let rows = sqlx::query(
-        "SELECT id, student_id, name, reason, points, point_type, timestamp FROM records 
+        "SELECT id, student_id, name, reason, points, point_type, timestamp, COALESCE(date, substr(timestamp, 1, 10)) as date FROM records 
          WHERE LOWER(student_id) LIKE ? OR LOWER(name) LIKE ? OR LOWER(reason) LIKE ?
-         ORDER BY timestamp DESC"
+         ORDER BY date DESC, timestamp DESC"
     )
     .bind(&search_term)
     .bind(&search_term)
@@ -262,6 +286,7 @@ async fn search_records(term: String, app_handle: AppHandle) -> Result<Vec<Recor
             points: row.get::<i32, _>("points"),
             point_type: row.get::<String, _>("point_type"),
             timestamp: row.get::<String, _>("timestamp"),
+            date: row.get::<String, _>("date"),
         })
         .collect();
     
@@ -314,8 +339,8 @@ async fn get_student_details(student_id: String, app_handle: AppHandle) -> Resul
     let state = app_handle.state::<AppState>();
     
     let rows = sqlx::query(
-        "SELECT id, student_id, name, reason, points, point_type, timestamp FROM records 
-         WHERE student_id = ? ORDER BY timestamp DESC"
+        "SELECT id, student_id, name, reason, points, point_type, timestamp, COALESCE(date, substr(timestamp, 1, 10)) as date FROM records 
+         WHERE student_id = ? ORDER BY date DESC, timestamp DESC"
     )
     .bind(&student_id)
     .fetch_all(&state.db)
